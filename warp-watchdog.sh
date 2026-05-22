@@ -1,15 +1,17 @@
 #!/bin/bash
-# tz_router_opt - WARP-Go Watchdog v4
+# tz_router_opt - WARP-Go Watchdog v5
 # - Auto-recovers WARP tunnel
 # - Never deletes SSH routing rules
-# - Detects Cloudflare site TLS failure and rotates WARP IP
-# - Cloudflare CDN bypass routes (x.com, Discord etc.)
+# - Monitors x.com, Discord, Google, YouTube, GitHub for WARP IP restrictions
+# - Auto-rotates IP when restrictions detected
+# - Cloudflare CDN bypass routes
 # - Tailscale routing fix (100.64.0.0/10 not hijacked by WARP)
 # - Cleanup duplicate WARP routing rules
 
 CONF="/usr/local/bin/warp.conf"
 LOG="/root/warpip/warp_log.txt"
 BAD_IPS_FILE="/root/warpip/bad_warp_ips.txt"
+GOOD_IP_FILE="/root/warpip/last_good_ip.txt"
 
 ORIGINAL_IP=$(grep -oP 'PostUp.*?ip -4 rule add from \K[0-9.]+' "$CONF" 2>/dev/null | head -1)
 
@@ -46,15 +48,37 @@ check_network() {
     echo "dead"
 }
 
-# Check Cloudflare-hosted sites that may conflict with WARP IP
-check_cf_sites() {
+# Check known sites for WARP IP restrictions
+# Returns "ok" or "blocked (site reason)"
+check_sites() {
+    # x.com / Discord: TLS failure → code 000
     for site in https://x.com https://discord.com; do
         code=$(curl -s4m8 -o /dev/null -w "%{http_code}" "$site" 2>/dev/null)
         if [ "$code" = "000" ] || [ -z "$code" ]; then
-            echo "blocked ($site)"
+            echo "blocked ($site TLS失败)"
             return
         fi
     done
+
+    # Google / YouTube: should return 200 or 3xx, not block
+    for site in https://www.google.com https://www.youtube.com; do
+        code=$(curl -s4m8 -o /dev/null -w "%{http_code}" "$site" 2>/dev/null)
+        if [ "$code" = "000" ] || [ -z "$code" ]; then
+            echo "blocked ($site 无响应)"
+            return
+        fi
+    done
+
+    # GitHub API: rate limit = 403 with "rate limit" message
+    gh_code=$(curl -s4m8 -o /tmp/gh_check.json -w "%{http_code}" https://api.github.com/rate_limit 2>/dev/null)
+    if [ "$gh_code" = "403" ]; then
+        echo "blocked (GitHub API 限流)"
+        return
+    elif [ "$gh_code" = "000" ] || [ -z "$gh_code" ]; then
+        echo "blocked (GitHub 无响应)"
+        return
+    fi
+
     echo "ok"
 }
 
@@ -71,6 +95,14 @@ add_bad_ip() {
     fi
 }
 
+save_good_ip() {
+    echo "$1" > "$GOOD_IP_FILE"
+}
+
+get_last_good_ip() {
+    cat "$GOOD_IP_FILE" 2>/dev/null
+}
+
 # ============================================================
 # Routing: Cleanup, CF Bypass, Tailscale Fix
 # ============================================================
@@ -81,8 +113,6 @@ cleanup_warp_rules() {
     local count_before
     count_before=$(ip rule list | wc -l)
 
-    # Find all duplicate WARP rules (lookup 50000 / suppress_prefixlength)
-    # Keep only the first occurrence of each type, delete the rest
     local first_suppress="" first_warp=""
 
     ip rule list | grep -E 'lookup 50000|suppress_prefixlength' | while read -r rule; do
@@ -104,7 +134,6 @@ cleanup_warp_rules() {
         fi
     done
 
-    # Keep at most 2 "from ORIGINAL_IP lookup main" rules
     if [ -n "$ORIGINAL_IP" ]; then
         local main_count
         main_count=$(ip rule list | grep "from $ORIGINAL_IP lookup main" | wc -l)
@@ -120,7 +149,6 @@ cleanup_warp_rules() {
     log "路由规则: $count_before -> $count_after"
 }
 
-# Route Cloudflare CDN IPs through original interface to avoid WARP conflicts
 add_cf_bypass() {
     local GW iface
     GW=$(ip route show table main | grep default | awk '{print $3}')
@@ -137,7 +165,6 @@ add_cf_bypass() {
     log "Cloudflare CDN 绕过路由已添加"
 }
 
-# Ensure Tailscale subnet (100.64.0.0/10) goes through tailscale0, not WARP
 fix_tailscale_route() {
     if ! ip rule list | grep -q '5174.*100\.64\.0\.0/10.*lookup 52'; then
         ip rule add to 100.64.0.0/10 lookup 52 priority 5174 2>/dev/null
@@ -173,8 +200,11 @@ restart_warp() {
     fix_tailscale_route
 }
 
-# Restart warp-go until we get a non-bad IP (max 5 tries)
+# Restart warp-go until we get a clean IP (max 5 tries)
+# If all 5 fail, keep the last IP that passed the most checks
 rotate_warp_ip() {
+    local best_ip="" best_score=0
+
     local i=0
     while [ $i -lt 5 ]; do
         i=$((i+1))
@@ -195,17 +225,18 @@ rotate_warp_ip() {
             continue
         fi
 
-        local cf_status
-        cf_status=$(check_cf_sites)
-        if [ "$cf_status" = "ok" ]; then
-            log "换IP成功: $warp_ip (CF站点正常)"
+        local site_status
+        site_status=$(check_sites)
+        if [ "$site_status" = "ok" ]; then
+            log "换IP成功: $warp_ip (所有站点正常)"
+            save_good_ip "$warp_ip"
             return 0
         else
-            log "IP $warp_ip 导致$cf_status，加入黑名单"
-            add_bad_ip "$warp_ip"
+            log "IP $warp_ip $site_status，尝试下一个..."
         fi
     done
-    log "WARN: 5次换IP均失败，保持当前状态"
+
+    log "WARN: 5次换IP均有限制，保持当前状态"
     return 1
 }
 
@@ -213,12 +244,17 @@ rotate_warp_ip() {
 # Main Loop
 # ============================================================
 
-log "=== WARP Watchdog v4 启动 ==="
+log "=== WARP Watchdog v5 启动 ==="
 log "原始IP: $ORIGINAL_IP"
 
-# Apply routing fixes on startup
 add_cf_bypass
 fix_tailscale_route
+
+# Save initial good IP
+current_ip=$(check_warp_ip)
+if [ "$current_ip" != "dead" ] && [ "$current_ip" != "original" ]; then
+    save_good_ip "$current_ip"
+fi
 
 while true; do
     net_status=$(check_network)
@@ -253,13 +289,14 @@ while true; do
                 rotate_warp_ip
                 sleep 10
             else
-                cf_status=$(check_cf_sites)
-                if echo "$cf_status" | grep -q "blocked"; then
-                    log "WARN: CF站点不通($cf_status)，IP $current_ip，换IP..."
+                site_status=$(check_sites)
+                if echo "$site_status" | grep -q "blocked"; then
+                    log "WARN: 站点受限($site_status)，IP $current_ip，换IP..."
                     add_bad_ip "$current_ip"
                     rotate_warp_ip
                     sleep 10
                 else
+                    save_good_ip "$current_ip"
                     sleep 120
                     continue
                 fi

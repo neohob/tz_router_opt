@@ -1,0 +1,28 @@
+# Domains routed through WARP by sing-box.
+# One domain suffix per line. Lines beginning with # are ignored.
+
+# ChatGPT / OpenAI
+chatgpt.com
+openai.com
+oaistatic.com
+oaiusercontent.com
+
+# Gemini / NotebookLM
+gemini.google.com
+notebooklm.google.com
+notebooklm.googleapis.com
+generativeai.google
+generativelanguage.googleapis.com
+aistudio.google.com
+makersuite.google.com
+ai.google.dev
+accounts.google.com
+
+# Netflix
+netflix.com
+netflix.net
+nflxext.com
+nflximg.com
+nflximg.net
+nflxso.net
+nflxvideo.net

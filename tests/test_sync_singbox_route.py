@@ -11,7 +11,7 @@ SCRIPT = REPO / "sync-singbox-route.py"
 
 
 class SyncSingboxRouteTest(unittest.TestCase):
-    def test_syncer_binds_direct_and_inserts_warp_rule(self):
+    def test_syncer_binds_direct_and_inserts_warp_rules(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             config = tmp / "sb.json"
@@ -28,7 +28,7 @@ class SyncSingboxRouteTest(unittest.TestCase):
                     "rules": [
                         {"action": "sniff"},
                         {"outbound": "warp-out", "domain_suffix": ["stale.example"]},
-                        {"outbound": "warp-out", "domain_suffix": ["old.example"]},
+                        {"outbound": "warp-out", "ip_cidr": ["142.250.0.0/15"]},
                         {"outbound": "direct", "network": "udp,tcp"},
                     ]
                 },
@@ -59,11 +59,10 @@ class SyncSingboxRouteTest(unittest.TestCase):
                 "domain_suffix": ["chatgpt.com", "openai.com"],
                 "outbound": "warp-out",
             })
+            self.assertEqual(rules[2]["outbound"], "warp-out")
+            self.assertIn("142.250.0.0/15", rules[2]["ip_cidr"])
+            self.assertIn("216.239.32.0/19", rules[2]["ip_cidr"])
             self.assertEqual(rules[-1], {"outbound": "direct", "network": "udp,tcp"})
-            self.assertEqual(
-                [r for r in rules if r.get("domain_suffix") == ["chatgpt.com", "openai.com"]],
-                [rules[1]],
-            )
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ class SyncSingboxRouteTest(unittest.TestCase):
                     {"type": "direct", "tag": "direct", "domain_strategy": "prefer_ipv4"},
                     {"type": "direct", "tag": "vps-outbound-v4", "domain_strategy": "prefer_ipv4"},
                     {"type": "direct", "tag": "vps-outbound-v6", "domain_strategy": "prefer_ipv6"},
+                    {"type": "direct", "tag": "warp-IPv4-out", "detour": "warp-out"},
                 ],
                 "route": {
                     "rules": [
@@ -51,8 +52,10 @@ class SyncSingboxRouteTest(unittest.TestCase):
             )
 
             patched = json.loads(result.stdout)
-            directs = [o for o in patched["outbounds"] if o["type"] == "direct"]
+            directs = [o for o in patched["outbounds"] if o["type"] == "direct" and "detour" not in o]
             self.assertTrue(all(o["bind_interface"] == "eth0" for o in directs))
+            detoured = next(o for o in patched["outbounds"] if o["tag"] == "warp-IPv4-out")
+            self.assertNotIn("bind_interface", detoured)
 
             rules = patched["route"]["rules"]
             self.assertEqual(rules[1], {

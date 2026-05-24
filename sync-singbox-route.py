@@ -49,7 +49,7 @@ def patch_config(
 
     direct_count = 0
     for outbound in cfg.get("outbounds", []):
-        if outbound.get("type") == "direct" and "detour" not in outbound:
+        if outbound.get("type") == "direct" and "detour" not in outbound and outbound.get("tag") != warp_tag:
             outbound["bind_interface"] = default_interface
             direct_count += 1
 

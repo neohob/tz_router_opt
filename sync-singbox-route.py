@@ -9,18 +9,6 @@ from pathlib import Path
 from typing import Any
 
 
-GOOGLE_WARP_CIDRS = [
-    "64.233.160.0/19",
-    "74.125.0.0/16",
-    "108.177.0.0/17",
-    "142.250.0.0/15",
-    "142.251.0.0/16",
-    "172.217.0.0/16",
-    "172.253.0.0/16",
-    "216.239.32.0/19",
-]
-
-
 def read_allowlist(path: Path) -> list[str]:
     domains: list[str] = []
     seen: set[str] = set()
@@ -76,8 +64,8 @@ def patch_config(
         if not (
             rule.get("outbound") == warp_tag
             and (
-                rule.get("domain_suffix") == domains
-                or rule.get("ip_cidr") == GOOGLE_WARP_CIDRS
+                "domain_suffix" in rule
+                or "ip_cidr" in rule
             )
         )
     ]
@@ -85,10 +73,6 @@ def patch_config(
     insert_at = 1 if rules and rules[0].get("action") == "sniff" else 0
     rules.insert(insert_at, {
         "domain_suffix": domains,
-        "outbound": warp_tag,
-    })
-    rules.insert(insert_at + 1, {
-        "ip_cidr": GOOGLE_WARP_CIDRS,
         "outbound": warp_tag,
     })
 

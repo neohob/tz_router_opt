@@ -52,7 +52,7 @@ class SyncSingboxRouteTest(unittest.TestCase):
             )
 
             patched = json.loads(result.stdout)
-            directs = [o for o in patched["outbounds"] if o["type"] == "direct" and "detour" not in o]
+            directs = [o for o in patched["outbounds"] if o["type"] == "direct" and "detour" not in o and o["tag"] != "warp-out"]
             self.assertTrue(all(o["bind_interface"] == "eth0" for o in directs))
             detoured = next(o for o in patched["outbounds"] if o["tag"] == "warp-IPv4-out")
             self.assertNotIn("bind_interface", detoured)

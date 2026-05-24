@@ -66,8 +66,18 @@ def patch_config(
     warp_tag: str,
     default_interface: str,
 ) -> dict[str, Any]:
-    if not tag_exists(cfg, warp_tag):
-        raise ValueError(f"missing sing-box outbound/endpoint tag: {warp_tag}")
+    system_warp_out = None
+    for outbound in cfg.get("outbounds", []):
+        if outbound.get("tag") == warp_tag:
+            system_warp_out = outbound
+            break
+    if system_warp_out is None:
+        system_warp_out = {
+            "type": "direct",
+            "tag": warp_tag,
+            "domain_strategy": "prefer_ipv4",
+        }
+        cfg.setdefault("outbounds", []).append(system_warp_out)
 
     direct_count = 0
     for outbound in cfg.get("outbounds", []):

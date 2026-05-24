@@ -9,6 +9,28 @@ from pathlib import Path
 from typing import Any
 
 
+GOOGLE_WARP_IP_CIDRS = [
+    "142.251.218.0/23",
+    "142.251.214.0/24",
+    "142.251.14.0/24",
+    "108.177.15.0/24",
+    "108.177.125.0/24",
+    "216.239.36.0/24",
+    "216.239.32.0/22",
+    "142.251.2.0/24",
+    "142.251.127.0/24",
+    "142.251.152.0/24",
+    "142.251.154.0/24",
+    "142.251.155.0/24",
+    "142.251.150.0/24",
+    "142.251.151.0/24",
+    "142.251.153.0/24",
+    "142.251.156.0/24",
+    "142.251.157.0/24",
+    "74.125.137.0/24",
+]
+
+
 def read_allowlist(path: Path) -> list[str]:
     domains: list[str] = []
     seen: set[str] = set()
@@ -72,6 +94,10 @@ def patch_config(
 
     insert_at = 1 if rules and rules[0].get("action") == "sniff" else 0
     rules.insert(insert_at, {
+        "ip_cidr": GOOGLE_WARP_IP_CIDRS,
+        "outbound": warp_tag,
+    })
+    rules.insert(insert_at + 1, {
         "domain_suffix": domains,
         "outbound": warp_tag,
     })

@@ -58,12 +58,13 @@ class SyncSingboxRouteTest(unittest.TestCase):
             self.assertNotIn("bind_interface", detoured)
 
             rules = patched["route"]["rules"]
-            self.assertEqual(rules[1], {
+            self.assertIn("74.125.137.0/24", rules[1]["ip_cidr"])
+            self.assertEqual(rules[1]["outbound"], "warp-out")
+            self.assertEqual(rules[2], {
                 "domain_suffix": ["chatgpt.com", "openai.com"],
                 "outbound": "warp-out",
             })
-            self.assertEqual(rules[2], {"outbound": "direct", "network": "udp,tcp"})
-            self.assertFalse(any("ip_cidr" in rule for rule in rules if rule.get("outbound") == "warp-out"))
+            self.assertEqual(rules[3], {"outbound": "direct", "network": "udp,tcp"})
 
 
 if __name__ == "__main__":

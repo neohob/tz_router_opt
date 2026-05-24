@@ -22,8 +22,6 @@ ogads-pa.clients6.google.com
 waa-pa.clients6.google.com
 gemini.gstatic.com
 lh3.googleusercontent.com
-ssl.gstatic.com
-www.gstatic.com
 
 # Netflix
 netflix.com

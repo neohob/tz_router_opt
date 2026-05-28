@@ -26,6 +26,7 @@ ssl.gstatic.com
 www.gstatic.com
 www.google.com
 google.com
+labs.google
 
 # Netflix
 netflix.com
